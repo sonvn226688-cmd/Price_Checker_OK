@@ -1,0 +1,337 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10251f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Trade Lookup">
+<title>Export Trade Lookup</title>
+<style>
+:root {
+  --bg:#f3f6f4; --dark:#10251f; --green:#16845d;
+  --muted:#718078; --line:#e5ebe7; --white:#fff;
+}
+* {box-sizing:border-box}
+body {
+  margin:0; font-family:-apple-system,BlinkMacSystemFont,
+  "Segoe UI",sans-serif; background:var(--bg); color:var(--dark);
+}
+header {
+  background:var(--dark); color:white;
+  padding:25px 20px 27px; border-radius:0 0 25px 25px;
+}
+.brand {font-size:21px;font-weight:850;letter-spacing:1px}
+.sub {font-size:11px;color:#a9c2b6;margin-top:5px}
+.container {padding:18px 16px 45px;max-width:760px;margin:auto}
+.searchbox {
+  background:white;padding:15px;border-radius:17px;
+  box-shadow:0 5px 20px #10251f0b;
+}
+.label {font-size:12px;font-weight:750;margin-bottom:10px}
+.searchrow {display:flex;gap:8px}
+input {
+  min-width:0;flex:1;border:1px solid var(--line);
+  padding:14px;border-radius:11px;font-size:15px;
+  outline:none;background:#fafcfb;
+}
+input:focus {border-color:var(--green)}
+button {
+  border:0;border-radius:11px;padding:0 17px;
+  background:var(--green);color:white;font-weight:700;
+  cursor:pointer;
+}
+.status {font-size:12px;color:var(--muted);margin-top:10px}
+.suggestions {
+  background:white;border-radius:12px;margin-top:8px;
+  overflow:hidden;
+}
+.suggestion {
+  padding:13px;border-bottom:1px solid var(--line);
+  font-size:13px;cursor:pointer;
+}
+.section-title {
+  font-size:15px;font-weight:800;margin:23px 0 12px;
+}
+.results {display:grid;gap:12px}
+.company {
+  background:white;border-radius:17px;padding:16px;
+  box-shadow:0 4px 15px #10251f08;
+}
+.company-name {font-size:16px;font-weight:800;line-height:1.45}
+.meta {font-size:12px;color:var(--muted);margin-top:7px}
+.pill {
+  display:inline-block;background:#e8f5ee;color:#13754f;
+  border-radius:20px;padding:5px 9px;font-size:11px;
+  font-weight:750;margin-top:10px;
+}
+table {width:100%;border-collapse:collapse;margin-top:14px}
+td {
+  padding:10px 4px;border-top:1px solid var(--line);
+  font-size:12px;vertical-align:top;line-height:1.5;
+}
+td:first-child {color:var(--muted);width:36%}
+td:last-child {font-weight:650;overflow-wrap:anywhere}
+.empty {
+  text-align:center;background:white;padding:28px 15px;
+  border-radius:16px;color:var(--muted);font-size:13px;
+}
+footer {
+  text-align:center;color:#91a098;font-size:11px;padding:25px;
+}
+.hidden {display:none}
+@media(min-width:600px) {
+  .container {padding-top:25px}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">EXPORT TRADE</div>
+  <div class="sub">COMPANY INTELLIGENCE & TRADE DATABASE</div>
+</header>
+
+<main class="container">
+  <section class="searchbox">
+    <div class="label">TÌM KIẾM CÔNG TY XUẤT KHẨU</div>
+    <div class="searchrow">
+      <input id="search" placeholder="Nhập tên công ty..." autocomplete="off">
+      <button id="searchBtn">Tìm</button>
+    </div>
+    <div class="status" id="status">Đang kết nối dữ liệu...</div>
+    <div id="suggestions" class="suggestions hidden"></div>
+  </section>
+
+  <div class="section-title">KẾT QUẢ TRA CỨU</div>
+  <section id="results">
+    <div class="empty">Nhập tên công ty để bắt đầu tra cứu.</div>
+  </section>
+</main>
+
+<footer>EXPORT TRADE LOOKUP · PRIVATE BUSINESS TOOL</footer>
+
+<script>
+/*
+  THAY URL BÊN DƯỚI BẰNG URL GOOGLE APPS SCRIPT
+*/
+const API_URL = "https://script.google.com/macros/s/AKfycbwShDA2Jbx1siwnMSMJ32DfNjx-F55OjBU7igwsEePlPdGg5eOQS2nDMDnyMm81XdnlRA/exec";
+
+let database = [];
+let headers = [];
+
+const $ = id => document.getElementById(id);
+
+function normalize(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g,"")
+    .replace(/đ/g,"d").replace(/Đ/g,"D")
+    .toLowerCase().replace(/[^a-z0-9]/g,"");
+}
+
+function getField(row, aliases) {
+  const keys = Object.keys(row);
+  for (const alias of aliases) {
+    const key = keys.find(k => normalize(k) === normalize(alias));
+    if (key && row[key] !== "") return row[key];
+  }
+  return "";
+}
+
+const fields = {
+  exporter:["Exporter","Export Company","Seller","Shipper",
+    "Cong ty xuat khau","Ten cong ty xuat khau","Export name"],
+  importer:["Importer","Import Company","Buyer","Consignee",
+    "Cong ty nhap khau","Ten cong ty nhap khau","Import name"],
+  product:["Product","Commodity","Goods","Description",
+    "Hang hoa","Loai hang","Ten hang"],
+  price:["Price","Unit Price","Value","Gia","Don gia"],
+  currency:["Currency","Tien te","Unit"],
+  transport:["Transport","Shipping","Shipment","Mode",
+    "Van chuyen","Phuong thuc van chuyen"],
+  term:["Incoterm","Trade Term","Terms","Term",
+    "Dieu kien giao hang"],
+  date:["Date","Shipment Date","Ngay giao dich"],
+  quantity:["Quantity","Qty","So luong"],
+  origin:["Origin","Country of Origin","Xuat xu"],
+  destination:["Destination","Country","Diem den"]
+};
+
+function value(row, field) {
+  return getField(row, fields[field] || []);
+}
+
+function escapeHTML(str) {
+  return String(str ?? "").replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",
+    '"':"&quot;","'":"&#39;"
+  })[c]);
+}
+
+function jsonp(url) {
+  return new Promise((resolve,reject) => {
+    const callback = "tradeCallback" + Date.now();
+    const script = document.createElement("script");
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Hết thời gian kết nối"));
+    },15000);
+
+    function cleanup() {
+      clearTimeout(timer);
+      delete window[callback];
+      script.remove();
+    }
+
+    window[callback] = data => {
+      cleanup();
+      resolve(data);
+    };
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("Không thể đọc Google Sheets"));
+    };
+    script.src = url + (url.includes("?") ? "&" : "?")
+      + "callback=" + callback + "&t=" + Date.now();
+    document.body.appendChild(script);
+  });
+}
+
+async function loadData() {
+  if (API_URL.includes("YOUR_GOOGLE")) {
+    $("status").textContent = "Chưa cấu hình Google Sheets API.";
+    return;
+  }
+  try {
+    $("status").textContent = "Đang tải dữ liệu...";
+    const data = await jsonp(API_URL);
+    if (!data.success) throw new Error(data.error || "Lỗi dữ liệu");
+    database = data.rows || [];
+    $("status").textContent =
+      "Đã tải " + database.length + " giao dịch thành công.";
+  } catch(error) {
+    $("status").textContent = "Lỗi: " + error.message;
+  }
+}
+
+function findCompanies(query) {
+  const q = normalize(query);
+  if (!q) return [];
+
+  const names = [...new Set(database
+    .map(r => String(value(r,"exporter") || "").trim())
+    .filter(Boolean))];
+
+  return names.map(name => {
+    const n = normalize(name);
+    let score = n === q ? 100 :
+      n.startsWith(q) ? 80 :
+      n.includes(q) ? 60 : 0;
+
+    if (!score && q.length >= 4 && n.includes(q.slice(0,4)))
+      score = 20;
+
+    return {name,score};
+  }).filter(x => x.score > 0)
+    .sort((a,b) => b.score-a.score)
+    .slice(0,15);
+}
+
+function showSuggestions() {
+  const matches = findCompanies($("search").value);
+  const box = $("suggestions");
+
+  if (!matches.length) {
+    box.classList.add("hidden");
+    return;
+  }
+
+  box.innerHTML = matches.map(x =>
+    `<div class="suggestion" data-name="${escapeHTML(x.name)}">
+      ${escapeHTML(x.name)}
+    </div>`
+  ).join("");
+
+  box.classList.remove("hidden");
+  box.querySelectorAll(".suggestion").forEach(el => {
+    el.onclick = () => {
+      $("search").value = el.dataset.name;
+      box.classList.add("hidden");
+      search();
+    };
+  });
+}
+
+function renderCompany(name) {
+  const rows = database.filter(r =>
+    normalize(value(r,"exporter")) === normalize(name)
+  );
+
+  const importers = [...new Set(rows.map(r =>
+    String(value(r,"importer") || "").trim()
+  ).filter(Boolean))];
+
+  const details = rows.map((r,i) => `
+    <article class="company">
+      <div class="company-name">${i+1}. ${escapeHTML(value(r,"product") || "Chưa có dữ liệu hàng hóa")}</div>
+      <div class="meta">Công ty nhập khẩu: ${escapeHTML(value(r,"importer") || "Chưa cập nhật")}</div>
+      <table>
+        <tr><td>Giá giao dịch</td><td>${escapeHTML(value(r,"price") || "—")} ${escapeHTML(value(r,"currency"))}</td></tr>
+        <tr><td>Vận chuyển</td><td>${escapeHTML(value(r,"transport") || "—")}</td></tr>
+        <tr><td>Incoterms</td><td>${escapeHTML(value(r,"term") || "—")}</td></tr>
+        <tr><td>Số lượng</td><td>${escapeHTML(value(r,"quantity") || "—")}</td></tr>
+        <tr><td>Xuất xứ</td><td>${escapeHTML(value(r,"origin") || "—")}</td></tr>
+        <tr><td>Điểm đến</td><td>${escapeHTML(value(r,"destination") || "—")}</td></tr>
+        <tr><td>Ngày giao dịch</td><td>${escapeHTML(value(r,"date") || "—")}</td></tr>
+      </table>
+    </article>
+  `).join("");
+
+  $("results").innerHTML = `
+    <article class="company">
+      <div class="company-name">${escapeHTML(name)}</div>
+      <div class="meta">${rows.length} giao dịch được tìm thấy</div>
+      <span class="pill">${importers.length} CÔNG TY NHẬP KHẨU</span>
+      <table>
+        <tr><td>Danh sách người mua</td>
+        <td>${importers.length ? importers.map(escapeHTML).join("<br>") : "Chưa có dữ liệu"}</td></tr>
+      </table>
+    </article>
+    <div class="section-title">CHI TIẾT GIAO DỊCH (${rows.length})</div>
+    ${details}
+  `;
+}
+
+function search() {
+  const q = $("search").value.trim();
+  $("suggestions").classList.add("hidden");
+
+  if (!q) {
+    $("results").innerHTML =
+      '<div class="empty">Vui lòng nhập tên công ty.</div>';
+    return;
+  }
+
+  const matches = findCompanies(q);
+  if (!matches.length) {
+    $("results").innerHTML =
+      '<div class="empty">Không tìm thấy công ty phù hợp.</div>';
+    return;
+  }
+
+  // Tìm gần đúng nhưng chỉ hiển thị công ty khớp nhất
+  renderCompany(matches[0].name);
+}
+
+$("search").addEventListener("input",showSuggestions);
+$("search").addEventListener("keydown",e => {
+  if (e.key === "Enter") search();
+});
+$("searchBtn").addEventListener("click",search);
+
+loadData();
+</script>
+</body>
+</html>
